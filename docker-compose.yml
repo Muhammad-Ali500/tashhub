@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  taskhub:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - taskhub_data:/app/data
+    environment:
+      - TASKHUB_DATA=/app/data/tasks.json
+      - PORT=5000
+
+volumes:
+  taskhub_data:

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+  <header class="header">
+    <div class="header-content">
+      <h1><span class="logo-icon">✓</span> TaskHub</h1>
+      <p class="subtitle">Stay organized. Get things done.</p>
+    </div>
+  </header>
+
+  <main class="main">
+    <form id="task-form" class="task-form">
+      <div class="input-group">
+        <input
+          type="text"
+          id="task-input"
+          placeholder="What needs to be done?"
+          autocomplete="off"
+          required
+        >
+        <button type="submit" class="btn-primary">
+          <span class="plus">+</span> Add Task
+        </button>
+      </div>
+    </form>
+
+    <div class="toolbar">
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="active">Active</button>
+        <button class="filter-btn" data-filter="done">Done</button>
+      </div>
+      <span id="task-count" class="task-count">0 tasks</span>
+    </div>
+
+    <div id="task-list" class="task-list">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">📋</div>
+        <h3>No tasks yet</h3>
+        <p>Add your first task above to get started!</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Edit Task</h2>
+      <button class="modal-close" id="modal-close">&times;</button>
+    </div>
+    <form id="edit-form" class="modal-body">
+      <input type="hidden" id="edit-id">
+      <input type="text" id="edit-input" autocomplete="off" required>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="modal-cancel">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const API = "/api/tasks";
+let tasks = [];
+let currentFilter = "all";
+
+// ── Fetch & render ──────────────────────────────────────────────────────────
+
+async function fetchTasks() {
+  const res = await fetch(API);
+  tasks = await res.json();
+  render();
+}
+
+function render() {
+  const list = document.getElementById("task-list");
+  const empty = document.getElementById("empty-state");
+  const count = document.getElementById("task-count");
+
+  let filtered = tasks;
+  if (currentFilter === "active") filtered = tasks.filter(t => !t.done);
+  if (currentFilter === "done")   filtered = tasks.filter(t => t.done);
+
+  const activeCount = tasks.filter(t => !t.done).length;
+  count.textContent = `${activeCount} task${activeCount !== 1 ? "s" : ""} left`;
+
+  // Remove old task cards but keep empty state
+  list.querySelectorAll(".task-card").forEach(el => el.remove());
+
+  if (filtered.length === 0) {
+    empty.style.display = "block";
+    empty.querySelector("h3").textContent =
+      currentFilter === "all" ? "No tasks yet" :
+      currentFilter === "active" ? "No active tasks" :
+      "No completed tasks";
+    empty.querySelector("p").textContent =
+      currentFilter === "all" ? "Add your first task above to get started!" :
+      currentFilter === "active" ? "You're all caught up! 🎉" :
+      "Keep going — you've got this! 💪";
+    return;
+  }
+
+  empty.style.display = "none";
+
+  filtered.forEach(task => {
+    const card = document.createElement("div");
+    card.className = `task-card ${task.done ? "done" : ""}`;
+    card.dataset.id = task.id;
+
+    card.innerHTML = `
+      <label class="checkbox-wrapper">
+        <input type="checkbox" ${task.done ? "checked" : ""}>
+        <span class="checkmark"></span>
+      </label>
+      <span class="task-title">${escapeHtml(task.title)}</span>
+      <div class="task-actions">
+        <button class="btn-icon edit" title="Edit" aria-label="Edit task">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="btn-icon delete" title="Delete" aria-label="Delete task">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+    `;
+
+    // Checkbox toggle
+    const checkbox = card.querySelector("input[type=checkbox]");
+    checkbox.addEventListener("change", () => toggleTask(task.id, checkbox.checked));
+
+    // Edit button
+    card.querySelector(".edit").addEventListener("click", () => openEditModal(task));
+
+    // Delete button
+    card.querySelector(".delete").addEventListener("click", () => deleteTask(task.id));
+
+    list.appendChild(card);
+
+    // Stagger animation
+    requestAnimationFrame(() => card.classList.add("visible"));
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ── CRUD operations ──────────────────────────────────────────────────────────
+
+// Create
+document.getElementById("task-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = document.getElementById("task-input");
+  const title = input.value.trim();
+  if (!title) return;
+  await fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  input.value = "";
+  input.focus();
+  await fetchTasks();
+});
+
+// Toggle done
+async function toggleTask(id, done) {
+  await fetch(`${API}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ done }),
+  });
+  await fetchTasks();
+}
+
+// Delete
+async function deleteTask(id) {
+  const card = document.querySelector(`.task-card[data-id="${id}"]`);
+  if (card) card.classList.remove("visible");
+  await fetch(`${API}/${id}`, { method: "DELETE" });
+  await fetchTasks();
+}
+
+// ── Edit modal ───────────────────────────────────────────────────────────────
+
+function openEditModal(task) {
+  document.getElementById("edit-id").value = task.id;
+  document.getElementById("edit-input").value = task.title;
+  document.getElementById("edit-modal").classList.add("open");
+  document.getElementById("edit-input").focus();
+  document.getElementById("edit-input").select();
+}
+
+function closeEditModal() {
+  document.getElementById("edit-modal").classList.remove("open");
+}
+
+document.getElementById("edit-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = parseInt(document.getElementById("edit-id").value);
+  const title = document.getElementById("edit-input").value.trim();
+  if (!title) return;
+  await fetch(`${API}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  closeEditModal();
+  await fetchTasks();
+});
+
+document.getElementById("modal-close").addEventListener("click", closeEditModal);
+document.getElementById("modal-cancel").addEventListener("click", closeEditModal);
+document.getElementById("edit-modal").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) closeEditModal();
+});
+
+// ── Filter buttons ───────────────────────────────────────────────────────────
+
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentFilter = btn.dataset.filter;
+    render();
+  });
+});
+
+// ── Keyboard shortcuts ───────────────────────────────────────────────────────
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeEditModal();
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+fetchTasks();
+</script>
+</body>
+</html>
