@@ -28,3 +28,7 @@ jobs:
       - name: run application
         run: |
           python app.py
+          SERVER_PID=$!
+          sleep 3
+          curl -sf http://localhost:5000/ 
+          kill $SERVER_PID
