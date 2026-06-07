@@ -32,3 +32,31 @@ jobs:
           sleep 3
           curl -sf http://localhost:5000/ 
           kill $SERVER_PID
+
+deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── STEP: Log in to Docker Hub ──────────────────────────────────────
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # ── STEP: Build Docker image ────────────────────────────────────────
+      - name: Build Docker image
+        run: docker build -t tashhub .
+
+      # ── STEP: Tag and push to Docker Hub ────────────────────────────────
+      - name: Tag and push to Docker Hub
+        run: |
+          IMAGE=$(echo "${{ secrets.DOCKER_USERNAME }}" | xargs)/tashhub
+          docker tag tashhub $IMAGE:latest
+          docker tag tashhub $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
