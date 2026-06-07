@@ -30,7 +30,7 @@ jobs:
           python app.py &
           SERVER_PID=$!
           sleep 3
-          curl -sf http://localhost:5000/ 
+          curl -sf http://localhost:8000/ 
           kill $SERVER_PID
 
   deploy:
