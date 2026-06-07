@@ -49,7 +49,7 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t tashhub .
-
+ 
       - name: Tag and push to Docker Hub
         run: |
           IMAGE=$(echo "${{ secrets.DOCKER_USERNAME }}" | xargs)/tashhub
